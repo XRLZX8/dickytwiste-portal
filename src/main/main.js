@@ -40,11 +40,27 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
     mainWindow.once('ready-to-show', () => { mainWindow.show(); });
-    mainWindow.on('close', (e) => {
-        if (!isQuitting) {
-            e.preventDefault();
+    mainWindow.on('close', async (e) => {
+        if (isQuitting) return;
+        e.preventDefault();
+        const { dialog } = require('electron');
+        const choice = await dialog.showMessageBox(mainWindow, {
+            type: 'question',
+            buttons: ['收起到托盘', '退出应用', '取消'],
+            defaultId: 0,
+            cancelId: 2,
+            noLink: true,
+            title: 'Dickytwiste Portal',
+            message: '关闭应用？',
+            detail: '选择点击关闭按钮后的行为。'
+        });
+        if (choice.response === 0) {
             mainWindow.hide();
+        } else if (choice.response === 1) {
+            isQuitting = true;
+            app.quit();
         }
+        // response 2 (取消) → 保持窗口打开
     });
     mainWindow.on('closed', () => { mainWindow = null; });
 
@@ -331,7 +347,7 @@ function setupAutoUpdater() {
 
     autoUpdater.on('checking-for-update', () => send('checking'));
     autoUpdater.on('update-available', (info) => send('available', { version: info.version }));
-    autoUpdater.on('update-not-available', () => {});
+    autoUpdater.on('update-not-available', () => send('not-available'));
     autoUpdater.on('download-progress', (p) => send('progress', { percent: p.percent.toFixed(1) }));
     autoUpdater.on('update-downloaded', (info) => {
         send('downloaded', { version: info.version });

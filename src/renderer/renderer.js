@@ -59,6 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = document.getElementById('btn-update-install');
         banner.style.display = 'flex';
         switch (data.event) {
+            case 'checking':
+                text.textContent = '🔄 正在检查更新…';
+                btn.style.display = 'none';
+                break;
+            case 'not-available':
+                text.textContent = '✅ 已是最新版本';
+                btn.style.display = 'none';
+                setTimeout(() => { banner.style.display = 'none'; }, 3000);
+                break;
             case 'available':
                 text.textContent = `发现新版本 v${data.version}，正在下载…`;
                 break;
