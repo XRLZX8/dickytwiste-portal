@@ -4,12 +4,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabs = document.getElementById('tabs');
 
     // 渲染标签
+    // 标签当前顺序(id 数组)，用于拖拽重排
+    let tabsOrderArray = [];
+
     function renderTabs(list) {
+        tabsOrderArray = list.map(t => t.id);
         tabs.innerHTML = '';
         list.forEach(tab => {
             const el = document.createElement('div');
             el.className = 'tab' + (tab.active ? ' active' : '');
             el.dataset.id = tab.id;
+            el.draggable = true;
             el.innerHTML = `<span class="tab-icon">${tab.icon || '🌐'}</span>
                             <span class="tab-title">${escapeHtml(tab.title)}</span>
                             <span class="tab-close" title="关闭">&times;</span>`;
@@ -23,6 +28,33 @@ document.addEventListener('DOMContentLoaded', () => {
             el.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 ipcRenderer.send('tab-contextmenu', { id: tab.id, x: e.clientX, y: e.clientY });
+            });
+            // 拖拽排序
+            el.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', String(tab.id));
+                e.dataTransfer.effectAllowed = 'move';
+                el.classList.add('dragging');
+            });
+            el.addEventListener('dragend', () => el.classList.remove('dragging'));
+            el.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                el.classList.add('drag-hover');
+            });
+            el.addEventListener('dragleave', () => el.classList.remove('drag-hover'));
+            el.addEventListener('drop', (e) => {
+                e.preventDefault();
+                el.classList.remove('drag-hover');
+                const fromId = Number(e.dataTransfer.getData('text/plain'));
+                const toId = tab.id;
+                if (fromId === toId) return;
+                const fromIdx = tabsOrderArray.indexOf(fromId);
+                const toIdx = tabsOrderArray.indexOf(toId);
+                if (fromIdx < 0 || toIdx < 0) return;
+                const newOrder = [...tabsOrderArray];
+                newOrder.splice(fromIdx, 1);
+                newOrder.splice(toIdx, 0, fromId);
+                ipcRenderer.send('tab-reorder', newOrder);
             });
             tabs.appendChild(el);
         });

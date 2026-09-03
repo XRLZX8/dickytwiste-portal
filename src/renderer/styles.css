@@ -48,6 +48,12 @@ body {
     background: #2a2a36; color: #e8e8e8;
     border-color: #3a4a7a;
 }
+.tab.dragging { opacity: .4; }
+.tab.drag-hover {
+    border-color: #6f8fff;
+    background: rgba(111,143,255,.15);
+    box-shadow: 0 0 0 1px rgba(111,143,255,.4);
+}
 .tab-icon { font-size: 12px; flex-shrink: 0; }
 .tab-title { overflow: hidden; text-overflow: ellipsis; }
 .tab-close { margin-left: auto; color: #777; font-size: 14px; font-weight: 700; padding: 0 2px; }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, Tray, Menu, nativeImage, session, net } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 
@@ -8,6 +8,8 @@ let tabViews = new Map(); // id -> { view, title, icon, url }
 let activeTabId = null;
 let nextTabId = 1;
 let isQuitting = false;
+let isAppLoggedIn = false;
+let loginWin = null;
 
 const TAB_BAR_HEIGHT = 44;
 
@@ -145,6 +147,18 @@ ipcMain.handle('get-active-tab', () => activeTabId);
 ipcMain.on('app-quit', () => { isQuitting = true; app.quit(); });
 ipcMain.on('tab-request-sync', () => syncTabs());
 
+// 标签拖拽重排
+ipcMain.on('tab-reorder', (e, orderIds) => {
+    const newMap = new Map();
+    (orderIds || []).forEach(id => {
+        if (tabViews.has(id)) newMap.set(id, tabViews.get(id));
+    });
+    // 补漏（若 orderIds 不全）
+    tabViews.forEach((v, k) => { if (!newMap.has(k)) newMap.set(k, v); });
+    tabViews = newMap;
+    syncTabs();
+});
+
 // 刷新当前标签
 ipcMain.on('tab-refresh-current', () => {
     const entry = tabViews.get(activeTabId);
@@ -221,7 +235,8 @@ ipcMain.on('menu-settings', () => {
             try { autoUpdater.checkForUpdates(); } catch (e) {}
         } },
         { label: '🏠 打开官方网站', click: () => shell.openExternal('https://dickytwiste.top') },
-        { label: '👤 登录/注销', click: () => { const id = createTab('https://dickytwiste.top/login', '登录', '🔑'); activateTab(id); } },
+        { label: '👤 应用登录', click: () => openLoginWindow() },
+        { label: '🚪 注销', enabled: isAppLoggedIn, id: 'logout-menu', click: () => doLogout() },
         { type: 'separator' },
         { label: 'ℹ️ 关于', click: () => showAbout() },
         { type: 'separator' },
@@ -320,6 +335,122 @@ function showAbout() {
         message: 'Dickytwiste Portal',
         detail: `版本 ${app.getVersion()}\n多标签桌面门户 · Helios © 2026\n收纳 dickytwiste.top 全部 web 功能`
     });
+}
+
+// ============================================================
+// 应用级登录（Electron 本地登录，不依赖网页完整登录页）
+// ============================================================
+const LOGIN_API = 'https://dickytwiste.top/api/login';
+
+ipcMain.handle('app-login', async (e, { username, password }) => {
+    try {
+        const resp = await net.fetch(LOGIN_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'ok') {
+            isAppLoggedIn = true;
+            refreshAllTabs();
+            return { ok: true };
+        }
+        return { ok: false, error: data.error || '登录失败（账号或密码错误）' };
+    } catch (err) {
+        return { ok: false, error: String(err && err.message || err) };
+    }
+});
+
+function refreshAllTabs() {
+    tabViews.forEach(t => {
+        if (t.view.webContents && !t.view.webContents.isDestroyed()) t.view.webContents.reload();
+    });
+}
+
+async function doLogout() {
+    try {
+        await session.defaultSession.clearStorageData({ storages: ['cookies'] });
+    } catch (e) {}
+    isAppLoggedIn = false;
+    refreshAllTabs();
+    const { dialog } = require('electron');
+    dialog.showMessageBox(mainWindow, {
+        type: 'info', title: '已注销', message: '已清除登录状态，所有页面已刷新。'
+    });
+}
+
+function openLoginWindow() {
+    if (loginWin && !loginWin.isDestroyed()) { loginWin.focus(); return; }
+    loginWin = new BrowserWindow({
+        width: 400, height: 360,
+        resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+        parent: mainWindow, modal: true,
+        title: 'Dickytwiste 登录',
+        autoHideMenuBar: true,
+        webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <style>
+        * { box-sizing:border-box; }
+        body{
+          font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+          background:linear-gradient(180deg,#15151e,#1a1a26); color:#e8e8f0; margin:0;
+          padding:20px; min-height:100vh; display:flex; flex-direction:column;
+        }
+        .title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;letter-spacing:1px;margin-bottom:4px}
+        .logo{font-size:20px}
+        .sub{font-size:12px;color:#8a8aa0;margin-bottom:20px}
+        label{display:block;font-size:11px;color:#8a8aa0;margin:12px 0 6px;letter-spacing:1px}
+        input{width:100%;padding:10px 12px;background:#0f0f16;color:#e8e8f0;border:1px solid #2a2a40;border-radius:9px;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s}
+        input:focus{border-color:#6f8fff;box-shadow:0 0 0 3px rgba(111,143,255,.15)}
+        input::placeholder{color:#555575}
+        #err{color:#ff6b6b;font-size:12px;margin-top:14px;min-height:16px;text-align:center}
+        .btns{display:flex;gap:10px;margin-top:16px}
+        button{flex:1;padding:11px;border:none;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;letter-spacing:1px;transition:opacity .2s}
+        #login{background:linear-gradient(90deg,#6f8fff,#5a7aef);color:#fff;box-shadow:0 4px 16px rgba(111,143,255,.3)}
+        #cancel{background:#2a2a36;color:#aaa}
+        button:hover{opacity:.9}
+        .loading{opacity:.6;pointer-events:none}
+      </style></head>
+      <body>
+        <div class="title"><span class="logo">☀️</span> Dickytwiste Portal</div>
+        <div class="sub">登录后所有标签页免重复认证</div>
+        <label>用户名 — USERNAME</label>
+        <input id="u" placeholder="admin" autofocus>
+        <label>密码 — PASSWORD</label>
+        <input id="p" type="password" placeholder="••••••">
+        <div id="err"></div>
+        <div class="btns">
+          <button id="cancel">取消</button>
+          <button id="login">🔑 登录</button>
+        </div>
+        <script>
+          const { ipcRenderer } = require('electron');
+          const err = document.getElementById('err');
+          async function doLogin(){
+            const u=document.getElementById('u').value.trim();
+            const p=document.getElementById('p').value;
+            if(!u||!p){err.textContent='请输入用户名和密码';return;}
+            const btn=document.getElementById('login'); btn.classList.add('loading');
+            err.textContent='';
+            const r = await ipcRenderer.invoke('app-login',{username:u,password:p});
+            btn.classList.remove('loading');
+            if(r.ok){
+              err.style.color='#7ecf6a'; err.textContent='✅ 登录成功';
+              setTimeout(()=>window.close(),600);
+            } else {
+              err.style.color='#ff6b6b'; err.textContent=r.error||'登录失败';
+            }
+          }
+          document.getElementById('login').onclick=doLogin;
+          document.getElementById('cancel').onclick=()=>window.close();
+          document.getElementById('p').onkeydown=e=>{if(e.key==='Enter')doLogin();};
+          document.getElementById('u').onkeydown=e=>{if(e.key==='Enter')document.getElementById('p').focus()};
+          setTimeout(()=>document.getElementById('u').focus(),120);
+        </script>
+      </body></html>`;
+    loginWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    loginWin.on('closed', () => { loginWin = null; });
 }
 
 function syncTabs() {
