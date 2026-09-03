@@ -14,11 +14,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="tab-title">${escapeHtml(tab.title)}</span>
                             <span class="tab-close" title="关闭">&times;</span>`;
             el.addEventListener('click', (e) => {
-                if (e.target.classList.contains('tab-close')) {
+                if (e.target.closest('.tab-close')) {
                     ipcRenderer.send('tab-close', tab.id);
                 } else {
                     ipcRenderer.send('tab-activate', tab.id);
                 }
+            });
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                ipcRenderer.send('tab-contextmenu', { id: tab.id, x: e.clientX, y: e.clientY });
             });
             tabs.appendChild(el);
         });
@@ -36,6 +40,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // ＋ 按钮 → 弹出原生"新增标签"菜单
     document.getElementById('btn-home').addEventListener('click', () => {
         ipcRenderer.send('menu-quick-links');
+    });
+
+    // 🔄 刷新按钮 → 刷新当前标签
+    document.getElementById('btn-refresh')?.addEventListener('click', () => {
+        ipcRenderer.send('tab-refresh-current');
     });
 
     // ☰ 按钮 → 弹出原生"设置"菜单

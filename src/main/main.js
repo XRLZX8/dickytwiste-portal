@@ -92,7 +92,8 @@ function activateTab(id) {
 function closeTab(id) {
     if (!tabViews.has(id) || tabViews.size <= 1) return; // 保留至少1个
     const entry = tabViews.get(id);
-    entry.view.remove(entry.view.webContents);
+    mainWindow.contentView.removeChildView(entry.view);
+    if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close();
     tabViews.delete(id);
     if (activeTabId === id) {
         const first = tabViews.keys().next().value;
@@ -127,6 +128,42 @@ ipcMain.handle('get-tabs', () => {
 ipcMain.handle('get-active-tab', () => activeTabId);
 ipcMain.on('app-quit', () => { isQuitting = true; app.quit(); });
 ipcMain.on('tab-request-sync', () => syncTabs());
+
+// 刷新当前标签
+ipcMain.on('tab-refresh-current', () => {
+    const entry = tabViews.get(activeTabId);
+    if (entry && !entry.view.webContents.isDestroyed()) entry.view.webContents.reload();
+});
+
+// 标签右键菜单
+ipcMain.on('tab-contextmenu', (e, { id, x, y }) => {
+    if (!mainWindow) return;
+    const vid = Number(id);
+    const entry = tabViews.get(vid);
+    if (!entry) return;
+    const template = [
+        {
+            label: '🔄 刷新',
+            click: () => { if (!entry.view.webContents.isDestroyed()) entry.view.webContents.reload(); }
+        },
+        { type: 'separator' },
+        {
+            label: '📋 复制链接',
+            click: () => require('electron').clipboard.writeText(entry.url)
+        },
+        {
+            label: '🔗 在新窗口打开',
+            click: () => require('electron').shell.openExternal(entry.url)
+        },
+        { type: 'separator' },
+        {
+            label: '✕ 关闭标签',
+            enabled: tabViews.size > 1,
+            click: () => closeTab(vid)
+        }
+    ];
+    Menu.buildFromTemplate(template).popup({ window: mainWindow });
+});
 
 // ===== 原生菜单（显示在最顶层，不被 WebContentsView 遮挡） =====
 const QUICK_LINKS = [
@@ -191,17 +228,56 @@ function createURLInputWindow() {
     });
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
       <style>
-        body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',monospace;padding:18px;background:#141414;color:#e0e0e0;margin:0}
-        label{display:block;font-size:12px;color:#888;margin-bottom:8px;letter-spacing:1px}
-        input{width:100%;padding:9px 10px;background:#1e1e1e;color:#e0e0e0;border:1px solid #333;border-radius:7px;font-size:13px;outline:none}
-        input:focus{border-color:#6f8fff}
-        button{width:100%;margin-top:12px;padding:9px;background:#6f8fff;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:14px}
-        button:hover{background:#5a7aef}
+        * { box-sizing: border-box; }
+        body {
+          font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+          padding:20px; background:linear-gradient(180deg,#15151e,#1a1a26);
+          color:#e8e8f0; margin:0; min-height:100vh;
+          display:flex; flex-direction:column; justify-content:center;
+        }
+        .title {
+          display:flex; align-items:center; gap:8px; font-size:14px;
+          color:#fff; font-weight:600; margin-bottom:16px; letter-spacing:1px;
+        }
+        .title .dots {
+          display:flex; gap:6px;
+        }
+        .title .dots i { width:9px;height:9px;border-radius:50%;display:inline-block; }
+        .title .dots i:nth-child(1){background:#ff5f57}
+        .title .dots i:nth-child(2){background:#febc2e}
+        .title .dots i:nth-child(3){background:#28c840}
+        .title span.cap { margin-left:8px; opacity:.6; font-weight:400; font-size:12px; }
+        label {
+          display:block; font-size:11px; color:#8a8aa0; margin-bottom:8px; letter-spacing:2px;
+        }
+        input {
+          width:100%; padding:11px 14px; background:#0f0f16; color:#e8e8f0;
+          border:1px solid #2a2a40; border-radius:10px; font-size:14px; outline:none;
+          transition:border-color .2s, box-shadow .2s;
+        }
+        input:focus { border-color:#6f8fff; box-shadow:0 0 0 3px rgba(111,143,255,.15); }
+        input::placeholder { color:#555575; }
+        button {
+          width:100%; margin-top:16px; padding:11px;
+          background:linear-gradient(90deg,#6f8fff,#5a7aef);
+          color:#fff; border:none; border-radius:10px; cursor:pointer;
+          font-size:14px; font-weight:600; letter-spacing:2px;
+          transition:opacity .2s, transform .1s; box-shadow:0 4px 16px rgba(111,143,255,.3);
+        }
+        button:hover { opacity:.9; }
+        button:active { transform:translateY(1px); }
+        .hint { font-size:11px; color:#555575; text-align:center; margin-top:10px; }
       </style></head>
       <body>
-        <label>输入网址</label>
+        <div class="title">
+          <span class="dots"><i></i><i></i><i></i></span>
+          <span>打开链接</span>
+          <span class="cap">NEW TAB</span>
+        </div>
+        <label>输入网址 — URL</label>
         <input id="u" placeholder="https://example.com 或 example.com" autofocus>
-        <button id="ok">打开</button>
+        <button id="ok">🪄 打开</button>
+        <div class="hint">Enter 打开</div>
         <script>
           const { ipcRenderer } = require('electron');
           function submit(){
