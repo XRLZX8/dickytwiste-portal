@@ -41,7 +41,8 @@
     "publish": {
       "provider": "github",
       "owner": "XRLZX8",
-      "repo": "dickytwiste-portal"
+      "repo": "dickytwiste-portal",
+      "releaseType": "release"
     }
   },
   "dependencies": {
