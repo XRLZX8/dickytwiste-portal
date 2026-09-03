@@ -1,6 +1,6 @@
 {
   "name": "dickytwiste-portal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Dickytwiste \u672c\u5730\u95e8\u6237 \u2014\u2014 \u591a\u6807\u7b7e\u684c\u9762\u58f3\u5e94\u7528\uff0c\u6536\u7eb3 dickytwiste.top \u5168\u90e8 web \u529f\u80fd",
   "main": "src/main/main.js",
   "scripts": {
