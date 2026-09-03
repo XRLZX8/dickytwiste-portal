@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="styles.css">
+<title>Dickytwiste Portal</title>
+</head>
+<body>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@6/css/all.min.css">
+<div class="tabbar" id="tabbar">
+    <div class="brand" id="brand" title="Dickytwiste Portal">
+        <span class="brand-dot"></span>&nbsp;Dickytwiste&nbsp;<span class="brand-name">Portal</span>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="tabbar-right">
+        <button class="icon-btn" id="btn-home" title="新增主页">＋</button>
+        <button class="icon-btn" id="btn-settings" title="更多">☰</button>
+    </div>
+</div>
+
+<!-- 更新横幅 -->
+<div class="update-banner" id="update-banner" style="display:none">
+    <span id="update-text">发现新版本</span>
+    <button id="btn-update-install" style="display:none">立即重启安装</button>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>
