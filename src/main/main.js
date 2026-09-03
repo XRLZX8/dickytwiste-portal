@@ -126,6 +126,109 @@ ipcMain.handle('get-tabs', () => {
 });
 ipcMain.handle('get-active-tab', () => activeTabId);
 ipcMain.on('app-quit', () => { isQuitting = true; app.quit(); });
+ipcMain.on('tab-request-sync', () => syncTabs());
+
+// ===== 原生菜单（显示在最顶层，不被 WebContentsView 遮挡） =====
+const QUICK_LINKS = [
+    { title: '主页', icon: '🏠', url: 'https://dickytwiste.top' },
+    { title: '发布中心', icon: '📦', url: 'https://dickytwiste.top/releases' },
+    { title: '博客', icon: '📝', url: 'https://dickytwiste.top/blog' },
+    { title: '知识图谱', icon: '🕸️', url: 'https://dickytwiste.top/tools/kg' },
+    { title: 'AI Chat', icon: '💬', url: 'https://dickytwiste.top/chat' },
+    { title: '密码盒', icon: '🔐', url: 'https://dickytwiste.top/steg' },
+    { title: 'MD 预览', icon: '🖊️', url: 'https://dickytwiste.top/tools/md-preview' },
+    { title: 'DeepSeek Web', icon: '🐋', url: 'https://dsh.dickytwiste.top' }
+];
+
+// ＋ 按钮：弹出"新增标签"快捷菜单
+ipcMain.on('menu-quick-links', () => {
+    if (!mainWindow) return;
+    const items = QUICK_LINKS.map(l => ({
+        label: `${l.icon}  ${l.title}`,
+        click: () => {
+            const id = createTab(l.url, l.title, l.icon);
+            activateTab(id);
+        }
+    }));
+    items.push(
+        { type: 'separator' },
+        {
+            label: '🌍  自定义链接…',
+            click: () => createURLInputWindow()
+        }
+    );
+    Menu.buildFromTemplate(items).popup({ window: mainWindow });
+});
+
+// ☰ 按钮：设置菜单
+ipcMain.on('menu-settings', () => {
+    if (!mainWindow) return;
+    const template = [
+        { label: '🔍 检查更新', click: () => {
+            try { autoUpdater.checkForUpdates(); } catch (e) {}
+        } },
+        { label: '🏠 打开官方网站', click: () => shell.openExternal('https://dickytwiste.top') },
+        { label: '👤 登录/注销', click: () => { const id = createTab('https://dickytwiste.top/login', '登录', '🔑'); activateTab(id); } },
+        { type: 'separator' },
+        { label: 'ℹ️ 关于', click: () => showAbout() },
+        { type: 'separator' },
+        { label: '✕ 退出', click: () => { isQuitting = true; app.quit(); } }
+    ];
+    Menu.buildFromTemplate(template).popup({ window: mainWindow });
+});
+
+// 自定义链接输入窗口（独立 BrowserWindow，避免被 WebContentsView 遮挡）
+let urlInputWin = null;
+function createURLInputWindow() {
+    if (urlInputWin && !urlInputWin.isDestroyed()) { urlInputWin.focus(); return; }
+    urlInputWin = new BrowserWindow({
+        width: 420, height: 150,
+        resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+        modal: true, parent: mainWindow,
+        title: '打开链接',
+        autoHideMenuBar: true,
+        webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <style>
+        body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',monospace;padding:18px;background:#141414;color:#e0e0e0;margin:0}
+        label{display:block;font-size:12px;color:#888;margin-bottom:8px;letter-spacing:1px}
+        input{width:100%;padding:9px 10px;background:#1e1e1e;color:#e0e0e0;border:1px solid #333;border-radius:7px;font-size:13px;outline:none}
+        input:focus{border-color:#6f8fff}
+        button{width:100%;margin-top:12px;padding:9px;background:#6f8fff;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:14px}
+        button:hover{background:#5a7aef}
+      </style></head>
+      <body>
+        <label>输入网址</label>
+        <input id="u" placeholder="https://example.com 或 example.com" autofocus>
+        <button id="ok">打开</button>
+        <script>
+          const { ipcRenderer } = require('electron');
+          function submit(){
+            let v=document.getElementById('u').value.trim();
+            if(!v)return;
+            if(!/^https?:\\/\\//i.test(v)) v='https://'+v.replace(/^\\/+\\/+?/,'');
+            ipcRenderer.send('prompt-url-ok', v);
+            window.close();
+          }
+          document.getElementById('ok').onclick=submit;
+          document.getElementById('u').onkeydown=e=>{if(e.key==='Enter')submit();};
+          setTimeout(()=>document.getElementById('u').focus(),120);
+        </script>
+      </body></html>`;
+    urlInputWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    urlInputWin.on('closed', () => { urlInputWin = null; });
+}
+
+function showAbout() {
+    const { dialog } = require('electron');
+    dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '关于 Dickytwiste Portal',
+        message: 'Dickytwiste Portal',
+        detail: `版本 ${app.getVersion()}\n多标签桌面门户 · Helios © 2026\n收纳 dickytwiste.top 全部 web 功能`
+    });
+}
 
 function syncTabs() {
     if (mainWindow) {
